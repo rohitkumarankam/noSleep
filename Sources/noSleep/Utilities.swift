@@ -3,18 +3,26 @@
 import Foundation
 
 @discardableResult
-func shell(_ command: String) -> (output: String, status: Int32) {
+func run(_ executable: String, _ args: String..., suppressStderr: Bool = false, timeout: TimeInterval = 5) -> (output: String, status: Int32) {
     let task = Process()
     let pipe = Pipe()
+    task.executableURL = URL(fileURLWithPath: executable)
+    task.arguments = args
     task.standardOutput = pipe
-    task.standardError = pipe
-    task.launchPath = "/bin/zsh"
-    task.arguments = ["-c", command]
-    task.launch()
-    task.waitUntilExit()
+    task.standardError = suppressStderr ? FileHandle.nullDevice : pipe
+
+    let semaphore = DispatchSemaphore(value: 0)
+    task.terminationHandler = { _ in semaphore.signal() }
+
+    try? task.run()
+
+    if semaphore.wait(timeout: .now() + timeout) == .timedOut {
+        task.terminate()
+        semaphore.wait()
+    }
+
     let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    let output = String(data: data, encoding: .utf8) ?? ""
-    return (output, task.terminationStatus)
+    return (String(data: data, encoding: .utf8) ?? "", task.terminationStatus)
 }
 
 func getUID() -> String {
@@ -23,16 +31,12 @@ func getUID() -> String {
 
 // osascript because UNUserNotificationCenter requires bundled app
 func notify(_ message: String, subtitle: String? = nil, sound: String = "Glass") {
-    let escapedMessage = message.replacingOccurrences(of: "\"", with: "\\\"")
-    var script = "display notification \"\(escapedMessage)\" with title \"noSleep\""
-    
+    var script = "display notification \"\(message)\" with title \"noSleep\""
     if let sub = subtitle {
-        let escapedSub = sub.replacingOccurrences(of: "\"", with: "\\\"")
-        script += " subtitle \"\(escapedSub)\""
+        script += " subtitle \"\(sub)\""
     }
     script += " sound name \"\(sound)\""
-    
-    shell("osascript -e '\(script)'")
+    run("/usr/bin/osascript", "-e", script)
 }
 
 func notifyPreventing() {

@@ -38,10 +38,10 @@ This will compile, install to `~/bin`, set up launchd (bootstrap), and start the
 ## Usage
 
 ```bash
-noSleep              # Run daemon (foreground)
 noSleep status       # Show current state
 noSleep start        # Start via launchd
 noSleep stop         # Stop daemon
+noSleep daemon       # Run daemon (foreground)
 noSleep restart      # Restart daemon
 noSleep doctor       # Run diagnostics
 noSleep uninstall    # Remove all files

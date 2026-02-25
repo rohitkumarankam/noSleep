@@ -18,14 +18,23 @@ func cmdStatus() {
         print("Daemon: NOT running")
     }
     
-    let (output, _) = shell("launchctl list | grep '\(LABEL)'")
-    print("launchd: \(output.contains(LABEL) ? "LOADED" : "NOT loaded")")
+    let (listOutput, _) = run("/bin/launchctl", "list")
+    print("launchd: \(listOutput.contains(LABEL) ? "LOADED" : "NOT loaded")")
 }
 
 func cmdStart() {
+    let (listOutput, _) = run("/bin/launchctl", "list", suppressStderr: true)
+    if listOutput.contains(LABEL) {
+        print("[noSleep] Already running")
+        return
+    }
     print("[noSleep] Starting via launchctl")
-    shell("launchctl enable gui/\(getUID())/\(LABEL)")
-    shell("launchctl bootstrap gui/\(getUID()) '\(PLIST_PATH)'")
+    run("/bin/launchctl", "enable", "gui/\(getUID())/\(LABEL)")
+    let (_, bootstrapCode) = run("/bin/launchctl", "bootstrap", "gui/\(getUID())", PLIST_PATH)
+    if bootstrapCode != 0 {
+        fputs("[ERROR] Failed to start daemon (is the plist installed? Run install.sh)\n", stderr)
+        exit(1)
+    }
     print("[noSleep] Started")
 }
 
@@ -39,8 +48,8 @@ func cmdStop() {
         daemonPID = pid
     }
     
-    shell("launchctl bootout gui/\(getUID()) '\(PLIST_PATH)' 2>/dev/null || true")
-    shell("launchctl disable gui/\(getUID())/\(LABEL) 2>/dev/null || true")
+    run("/bin/launchctl", "bootout", "gui/\(getUID())", PLIST_PATH, suppressStderr: true)
+    run("/bin/launchctl", "disable", "gui/\(getUID())/\(LABEL)", suppressStderr: true)
     
     if let pid = daemonPID {
         for _ in 0..<50 {  // 5 sec max
@@ -69,8 +78,8 @@ func cmdRestart() {
         kill(pid, SIGTERM)
     }
     
-    shell("launchctl bootout gui/\(getUID()) '\(PLIST_PATH)' 2>/dev/null || true")
-    shell("launchctl disable gui/\(getUID())/\(LABEL) 2>/dev/null || true")
+    run("/bin/launchctl", "bootout", "gui/\(getUID())", PLIST_PATH, suppressStderr: true)
+    run("/bin/launchctl", "disable", "gui/\(getUID())/\(LABEL)", suppressStderr: true)
     
     if let pid = daemonPID {
         for _ in 0..<50 {
@@ -81,8 +90,8 @@ func cmdRestart() {
     
     try? FileManager.default.removeItem(atPath: LOCKFILE)
     
-    shell("launchctl enable gui/\(getUID())/\(LABEL)")
-    shell("launchctl bootstrap gui/\(getUID()) '\(PLIST_PATH)'")
+    run("/bin/launchctl", "enable", "gui/\(getUID())/\(LABEL)")
+    run("/bin/launchctl", "bootstrap", "gui/\(getUID())", PLIST_PATH)
     print("[noSleep] Restarted")
 }
 
@@ -100,11 +109,11 @@ func cmdDoctor() {
         daemonStatus = "Active (pid \(pid))"
     }
     
-    let (launchctl, _) = shell("launchctl list | grep '\(LABEL)' 2>&1")
-    let launchdStatus = launchctl.isEmpty ? "Not loaded" : "Loaded"
+    let (listOutput, _) = run("/bin/launchctl", "list")
+    let launchdStatus = listOutput.contains(LABEL) ? "Loaded" : "Not loaded"
     
-    let (plutil, _) = shell("plutil -lint '\(PLIST_PATH)' 2>&1")
-    let plistStatus = plutil.contains("OK") ? "Valid" : "Missing or invalid"
+    let (plutilOutput, _) = run("/usr/bin/plutil", "-lint", PLIST_PATH)
+    let plistStatus = plutilOutput.contains("OK") ? "Valid" : "Missing or invalid"
     
     print("""
     SYSTEM STATE:
@@ -123,8 +132,8 @@ func cmdDoctor() {
 func cmdUninstall() {
     print("[noSleep] Uninstalling...")
     
-    shell("launchctl bootout gui/\(getUID()) '\(PLIST_PATH)' 2>/dev/null || true")
-    shell("launchctl disable gui/\(getUID())/\(LABEL) 2>/dev/null || true")
+    run("/bin/launchctl", "bootout", "gui/\(getUID())", PLIST_PATH, suppressStderr: true)
+    run("/bin/launchctl", "disable", "gui/\(getUID())/\(LABEL)", suppressStderr: true)
     
     if let data = FileManager.default.contents(atPath: LOCKFILE),
        let pidStr = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
