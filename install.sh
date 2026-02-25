@@ -11,7 +11,14 @@ if ! command -v swiftc &> /dev/null; then
 fi
 
 echo "Compiling..."
-swiftc -O Sources/noSleep/*.swift -o noSleep
+CPU_BRAND=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo "")
+TARGET_CPU=$(echo "$CPU_BRAND" | grep -oiE 'Apple M[0-9]+' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+if [[ -n "$TARGET_CPU" ]]; then
+    echo "Detected CPU: $CPU_BRAND → -target-cpu $TARGET_CPU"
+    swiftc -O -target-cpu "$TARGET_CPU" Sources/noSleep/*.swift -o noSleep
+else
+    swiftc -O Sources/noSleep/*.swift -o noSleep
+fi
 
 mkdir -p ~/bin
 cp noSleep ~/bin/noSleep
