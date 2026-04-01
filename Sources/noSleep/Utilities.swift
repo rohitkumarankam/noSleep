@@ -14,7 +14,12 @@ func run(_ executable: String, _ args: String..., suppressStderr: Bool = false, 
     let semaphore = DispatchSemaphore(value: 0)
     task.terminationHandler = { _ in semaphore.signal() }
 
-    try? task.run()
+    do {
+        try task.run()
+    } catch {
+        fputs("[ERROR] Unable to run \(executable): \(error)\n", stderr)
+        return ("", -1)
+    }
 
     if semaphore.wait(timeout: .now() + timeout) == .timedOut {
         task.terminate()
