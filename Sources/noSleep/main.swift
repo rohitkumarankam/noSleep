@@ -11,6 +11,7 @@ func printHelp() {
         noSleep status       Show current power/lid/daemon state
         noSleep start        Start daemon via launchd (auto-start on login)
         noSleep stop         Stop daemon (keeps files for restart)
+        noSleep daemon       Run as daemon (foreground)
         noSleep restart      Stop and start daemon
         noSleep doctor       Run diagnostics (read-only)
         noSleep uninstall    Stop daemon and remove all installed files
@@ -31,21 +32,23 @@ func printVersion() {
 }
 
 let args = CommandLine.arguments
-if args.count > 1 {
-    switch args[1] {
-    case "status":              cmdStatus()
-    case "start":               cmdStart()
-    case "stop":                cmdStop()
-    case "restart":             cmdRestart()
-    case "doctor":              cmdDoctor()
-    case "uninstall":           cmdUninstall()
-    case "--version", "-v":     printVersion()
-    case "--help", "-h", "help": printHelp()
-    default:
-        print("Unknown command: \(args[1])")
+let cmd = args.count > 1 ? args[1] : ""
+switch cmd {
+case "status":              cmdStatus()
+case "start":               cmdStart()
+case "stop":                cmdStop()
+case "daemon":              runDaemon()
+case "restart":             cmdRestart()
+case "doctor":              cmdDoctor()
+case "uninstall":           cmdUninstall()
+case "--version", "-v":     printVersion()
+case "--help", "-h", "help": printHelp()
+default:
+    if cmd.isEmpty {
+        printHelp()
+    } else {
+        print("Unknown command: \(cmd)")
         print("Run 'noSleep --help' for usage.")
         exit(1)
     }
-} else {
-    runDaemon()
 }
