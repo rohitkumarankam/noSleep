@@ -91,7 +91,11 @@ func cmdRestart() {
     try? FileManager.default.removeItem(atPath: LOCKFILE)
     
     run("/bin/launchctl", "enable", "gui/\(getUID())/\(LABEL)")
-    run("/bin/launchctl", "bootstrap", "gui/\(getUID())", PLIST_PATH)
+    let (_, bootstrapCode) = run("/bin/launchctl", "bootstrap", "gui/\(getUID())", PLIST_PATH)
+    if bootstrapCode != 0 {
+        fputs("[ERROR] Failed to start daemon (is the plist installed? Run install.sh)\n", stderr)
+        exit(1)
+    }
     print("[noSleep] Restarted")
 }
 

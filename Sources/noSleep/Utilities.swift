@@ -36,11 +36,18 @@ func getUID() -> String {
 
 // osascript because UNUserNotificationCenter requires bundled app
 func notify(_ message: String, subtitle: String? = nil, sound: String = "Glass") {
-    var script = "display notification \"\(message)\" with title \"noSleep\""
-    if let sub = subtitle {
-        script += " subtitle \"\(sub)\""
+    // Escape backslashes first, then quotes — these are AppleScript string-literal
+    // escapes, not shell escapes. run() handles argv safely, but the message is
+    // still interpolated into an AppleScript source string.
+    func escape(_ s: String) -> String {
+        s.replacingOccurrences(of: "\\", with: "\\\\")
+         .replacingOccurrences(of: "\"", with: "\\\"")
     }
-    script += " sound name \"\(sound)\""
+    var script = "display notification \"\(escape(message))\" with title \"noSleep\""
+    if let sub = subtitle {
+        script += " subtitle \"\(escape(sub))\""
+    }
+    script += " sound name \"\(escape(sound))\""
     run("/usr/bin/osascript", "-e", script)
 }
 

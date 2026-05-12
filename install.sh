@@ -10,6 +10,13 @@ if ! command -v swiftc &> /dev/null; then
     exit 1
 fi
 
+# Detect existing install so we can restart the daemon after upgrade.
+LABEL="com.noSleep.daemon"
+WAS_RUNNING=false
+if /bin/launchctl list 2>/dev/null | grep -q "$LABEL"; then
+    WAS_RUNNING=true
+fi
+
 echo "Compiling..."
 CPU_BRAND=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo "")
 TARGET_CPU=$(echo "$CPU_BRAND" | grep -oiE 'Apple M[0-9]+' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
@@ -85,5 +92,11 @@ echo ""
 echo "✓ Installed to ~/bin/noSleep"
 echo "✓ Plist created at $PLIST_DEST"
 echo ""
-echo "To start: noSleep start"
-echo "To check: noSleep status"
+
+if [[ "$WAS_RUNNING" == true ]]; then
+    echo "Existing daemon detected — restarting to pick up the new binary..."
+    ~/bin/noSleep restart
+else
+    echo "To start: noSleep start"
+    echo "To check: noSleep status"
+fi
