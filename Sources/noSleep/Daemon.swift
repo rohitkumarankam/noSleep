@@ -9,20 +9,13 @@ private var gPreviousState: PowerState?
 private var gNotifyPort: IONotificationPortRef?
 private var gNotifierObject: io_object_t = 0
 private var gSetupComplete = false
+private var gDebounceTimer: CFRunLoopTimer?
 
 func shouldPreventSleep(_ state: PowerState) -> Bool {
     return state.isOnAC && state.isLidClosed
 }
 
-func handleStateChange() {
-    guard gSetupComplete else { return }
-    
-    // IOKit can fire rapid duplicate callbacks
-    struct Guard { static var processing = false }
-    guard !Guard.processing else { return }
-    Guard.processing = true
-    defer { Guard.processing = false }
-    
+func applyStateChange() {
     let current = getCurrentPowerState()
     
     guard gPreviousState != nil else {
@@ -48,6 +41,17 @@ func handleStateChange() {
     }
     
     gPreviousState = current
+}
+
+func handleStateChange() {
+    guard gSetupComplete else { return }
+    // Cancel any pending debounce and reschedule — collapses rapid IOKit callbacks
+    if let t = gDebounceTimer { CFRunLoopTimerInvalidate(t) }
+    var ctx = CFRunLoopTimerContext()
+    gDebounceTimer = CFRunLoopTimerCreate(nil, CFAbsoluteTimeGetCurrent() + 0.15, 0, 0, 0, { _, _ in
+        applyStateChange()
+    }, &ctx)
+    CFRunLoopAddTimer(CFRunLoopGetMain(), gDebounceTimer, .defaultMode)
 }
 
 func clamshellCallback(refCon: UnsafeMutableRawPointer?, service: io_service_t, messageType: UInt32, messageArgument: UnsafeMutableRawPointer?) {
@@ -111,18 +115,17 @@ func runDaemon() {
     gPreviousState = initialState
     
     _ = setupClamshellNotification()
-    
+
+    let powerSource = IOPSNotificationCreateRunLoopSource({ _ in
+        handleStateChange()
+    }, nil).takeRetainedValue()
+    CFRunLoopAddSource(CFRunLoopGetCurrent(), powerSource, .defaultMode)
+
     if shouldPreventSleep(initialState) {
         gSleepPreventer.preventSleep()
         notifyPreventing()
     }
-    
-    let powerSource = IOPSNotificationCreateRunLoopSource({ _ in
-        handleStateChange()
-    }, nil).takeRetainedValue()
-    
-    CFRunLoopAddSource(CFRunLoopGetCurrent(), powerSource, .defaultMode)
-    
+
     gSetupComplete = true
     CFRunLoopRun()
     
