@@ -16,15 +16,18 @@ func acquireLock() -> Bool {
     
     ftruncate(lockFD, 0)
     let pidStr = "\(getpid())\n"
-    write(lockFD, pidStr, pidStr.count)
+    write(lockFD, pidStr, pidStr.utf8.count)
+    fsync(lockFD)
     return true
 }
 
 func releaseLock() {
     if lockFD >= 0 {
+        // unlink before releasing the lock so no other process can
+        // acquire the lock on this inode and then have it deleted
+        unlink(LOCKFILE)
         flock(lockFD, LOCK_UN)
         close(lockFD)
-        unlink(LOCKFILE)
         lockFD = -1
     }
 }
