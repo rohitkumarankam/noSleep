@@ -3,16 +3,20 @@
 import Foundation
 
 @discardableResult
-func run(_ executable: String, _ args: String..., suppressStderr: Bool = false, timeout: TimeInterval = 5) -> (output: String, status: Int32) {
+func run(_ executable: String, _ args: String..., suppressStderr: Bool = false, captureOutput: Bool = true) -> (output: String, status: Int32) {
     let task = Process()
-    let pipe = Pipe()
     task.executableURL = URL(fileURLWithPath: executable)
     task.arguments = args
-    task.standardOutput = pipe
-    task.standardError = suppressStderr ? FileHandle.nullDevice : pipe
+    task.standardError = suppressStderr ? FileHandle.nullDevice : nil
 
-    let semaphore = DispatchSemaphore(value: 0)
-    task.terminationHandler = { _ in semaphore.signal() }
+    var pipe: Pipe?
+    if captureOutput {
+        let p = Pipe()
+        task.standardOutput = p
+        pipe = p
+    } else {
+        task.standardOutput = FileHandle.nullDevice
+    }
 
     do {
         try task.run()
@@ -21,24 +25,18 @@ func run(_ executable: String, _ args: String..., suppressStderr: Bool = false, 
         return ("", -1)
     }
 
-    if semaphore.wait(timeout: .now() + timeout) == .timedOut {
-        task.terminate()
-        semaphore.wait()
+    task.waitUntilExit()
+    if let p = pipe {
+        let data = p.fileHandleForReading.readDataToEndOfFile()
+        return (String(data: data, encoding: .utf8) ?? "", task.terminationStatus)
     }
-
-    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    return (String(data: data, encoding: .utf8) ?? "", task.terminationStatus)
+    return ("", task.terminationStatus)
 }
 
-func getUID() -> String {
-    return "\(getuid())"
-}
-
-// osascript because UNUserNotificationCenter requires bundled app
+// osascript because UNUserNotificationCenter requires bundled app.
+// Spawned detached via posix_spawn — no waitpid, no Foundation Process
+// monitoring thread, no thread leak on repeated lid-close events.
 func notify(_ message: String, subtitle: String? = nil, sound: String = "Glass") {
-    // Escape backslashes first, then quotes — these are AppleScript string-literal
-    // escapes, not shell escapes. run() handles argv safely, but the message is
-    // still interpolated into an AppleScript source string.
     func escape(_ s: String) -> String {
         s.replacingOccurrences(of: "\\", with: "\\\\")
          .replacingOccurrences(of: "\"", with: "\\\"")
@@ -48,7 +46,15 @@ func notify(_ message: String, subtitle: String? = nil, sound: String = "Glass")
         script += " subtitle \"\(escape(sub))\""
     }
     script += " sound name \"\(escape(sound))\""
-    run("/usr/bin/osascript", "-e", script)
+
+    // SIG_IGN on SIGCHLD tells the kernel to auto-reap children so
+    // zombies don't accumulate across repeated notifications.
+    signal(SIGCHLD, SIG_IGN)
+    let args: [String] = ["/usr/bin/osascript", "-e", script]
+    var argv = args.map { strdup($0) } + [nil]
+    var pid: pid_t = 0
+    posix_spawn(&pid, argv[0], nil, nil, &argv, nil)
+    argv.forEach { free($0) }
 }
 
 func notifyPreventing() {
