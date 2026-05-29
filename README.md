@@ -2,7 +2,7 @@
 
 > Prevents macOS from sleeping when lid is closed, but AC power is enabled. Event-driven daemon using native IOKit APIs.
 > 
-> Tested on MBP M2 and M5 chips, on macOS 26.2
+> Tested on MacBook Air (M1), MacBook Pro (M2, M4 Pro, M5) — macOS 26.5
 
 [![Swift](https://img.shields.io/badge/Swift-orange.svg)](https://swift.org)
 [![Platform](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](https://developer.apple.com/macos/)
